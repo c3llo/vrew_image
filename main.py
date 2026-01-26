@@ -4,11 +4,26 @@ import threading
 import time
 from pywinauto import Application
 
-def split_paragraphs(text):
+def split_paragraphs(text, remove_headers=False):
     import re
+    
+    if remove_headers:
+        # '챕터 [숫자]'로 시작하는 행을 행 단위로 먼저 제거합니다.
+        lines = text.split('\n')
+        # 패턴: 시작부분(공백허용) + 챕터 + 공백(허용) + 숫자
+        pattern = re.compile(r'^\s*챕터\s*\d+')
+        
+        filtered_lines = []
+        for line in lines:
+            if not pattern.match(line):
+                filtered_lines.append(line)
+        
+        # 다시 텍스트로 합칩니다.
+        text = '\n'.join(filtered_lines)
+        
     # 한 줄 이상의 빈 줄(\n\n)을 기준으로 문단을 나눕니다.
-    # 이렇게 하면 여러 줄로 된 하나의 문단이 Vrew의 자막 한 칸으로 입력됩니다.
     blocks = re.split(r'\n\s*\n', text.strip())
+    # 각 블록에서 앞뒤 공백을 제거하고 빈 블록은 제외합니다.
     return [b.strip() for b in blocks if b.strip()]
 
 def start_input():
@@ -17,7 +32,7 @@ def start_input():
         messagebox.showwarning("경고", "대본을 입력하세요")
         return
 
-    paragraphs = split_paragraphs(script)
+    paragraphs = split_paragraphs(script, remove_headers=remove_headers_var.get())
 
     # UI가 멈추지 않도록 별도 스레드에서 실행
     thread = threading.Thread(target=run_automation, args=(paragraphs,))
@@ -111,13 +126,13 @@ def update_paragraph_count(event=None):
         count_label.config(text="감지된 문단: 0개", fg="#666")
         return
     
-    paragraphs = split_paragraphs(text)
+    paragraphs = split_paragraphs(text, remove_headers=remove_headers_var.get())
     count = len(paragraphs)
     count_label.config(text=f"감지된 문단: {count}개", fg="#1976D2")
 
 # GUI 설정
 root = tk.Tk()
-root.title("Vrew 대본 자동 입력기")
+root.title("Vrew 대본 자동 입력기 by Moon_8800")
 root.geometry("1000x900")  
 root.minsize(600, 700)     
 
@@ -137,9 +152,22 @@ instruction_label = tk.Label(
 )
 instruction_label.pack()
 
-# 문단 개수 표시 라벨 (입력창 바로 위)
-count_label = tk.Label(root, text="감지된 문단: 0개", font=("Malgun Gothic", 10, "bold"), fg="#666")
-count_label.grid(row=1, column=0, sticky="w", padx=25)
+# 옵션 섹션 (문단 개수 및 챕터 삭제 체크박스)
+option_frame = tk.Frame(root)
+option_frame.grid(row=1, column=0, sticky="ew", padx=20)
+
+count_label = tk.Label(option_frame, text="감지된 문단: 0개", font=("Malgun Gothic", 10, "bold"), fg="#666")
+count_label.pack(side="left", padx=5)
+
+remove_headers_var = tk.BooleanVar(value=True)  # 기본적으로 체크됨
+remove_headers_checkbox = tk.Checkbutton(
+    option_frame, 
+    text="챕터 제목 삭제하기 ( 예: 챕터 1: ... )", 
+    variable=remove_headers_var,
+    font=("Malgun Gothic", 10),  # 폰트 크기 원복
+    command=update_paragraph_count
+)
+remove_headers_checkbox.pack(side="right", padx=5)
 
 # 중간 라벨
 info_label = tk.Label(root, text=" 아래에 대본을 입력하세요 (문단 사이를 '빈 줄'로 구분):", font=("Malgun Gothic", 10), fg="#666")
