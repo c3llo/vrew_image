@@ -1,8 +1,86 @@
+import re
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import threading
 import time
 from pywinauto import Application
+
+def get_lines_from_text(text):
+    return [s.strip() for s in text.split("\n") if s.strip()]
+
+def split_into_n_paragraphs(lines, n):
+    if n <= 0 or not lines:
+        return []
+    if n == 1:
+        return ["\n".join(lines)]
+    result = []
+    baseSize = len(lines) // n
+    remainder = len(lines) % n
+    idx = 0
+    for i in range(n):
+        chunkSize = baseSize + (1 if i < remainder else 0)
+        chunk = lines[idx:idx + chunkSize]
+        idx += chunkSize
+        result.append("\n".join(chunk))
+    return result
+
+def split_by_sentence_count(lines, n):
+    if n <= 0 or not lines:
+        return []
+    result = []
+    for i in range(0, len(lines), n):
+        chunk = lines[i:i + n]
+        result.append("\n".join(chunk))
+    return result
+
+def do_split_paragraphs():
+    script = text_area.get("1.0", tk.END).strip()
+    if not script:
+        messagebox.showwarning("경고", "대본을 입력하세요")
+        return
+    try:
+        n = int(paragraph_count_var.get().strip())
+        if n < 1 or n > 999:
+            messagebox.showwarning("경고", "문단 갯수는 1~999 사이로 입력하세요")
+            return
+    except ValueError:
+        messagebox.showwarning("경고", "문단 갯수에 올바른 숫자를 입력하세요 (1~999)")
+        return
+    lines = get_lines_from_text(script)
+    if not lines:
+        messagebox.showwarning("경고", "유효한 줄이 없습니다")
+        return
+    if n > len(lines):
+        messagebox.showwarning("경고", f"줄 수({len(lines)}개)보다 문단 수({n}개)가 많을 수 없습니다")
+        return
+    paragraphs = split_into_n_paragraphs(lines, n)
+    newText = "\n\n".join(paragraphs)
+    text_area.delete("1.0", tk.END)
+    text_area.insert("1.0", newText)
+    update_paragraph_count()
+
+def do_split_by_sentences():
+    script = text_area.get("1.0", tk.END).strip()
+    if not script:
+        messagebox.showwarning("경고", "대본을 입력하세요")
+        return
+    try:
+        n = int(sentence_count_var.get().strip())
+        if n < 1 or n > 999:
+            messagebox.showwarning("경고", "문장 갯수는 1~999 사이로 입력하세요")
+            return
+    except ValueError:
+        messagebox.showwarning("경고", "문장 갯수에 올바른 숫자를 입력하세요 (1~999)")
+        return
+    lines = get_lines_from_text(script)
+    if not lines:
+        messagebox.showwarning("경고", "유효한 줄이 없습니다")
+        return
+    paragraphs = split_by_sentence_count(lines, n)
+    newText = "\n\n".join(paragraphs)
+    text_area.delete("1.0", tk.END)
+    text_area.insert("1.0", newText)
+    update_paragraph_count()
 
 def split_paragraphs(text, remove_headers=False):
     import re
@@ -119,16 +197,26 @@ def run_automation(paragraphs):
     root.after(0, lambda: status_label.config(text="완료"))
     root.after(0, lambda: messagebox.showinfo("완료", "모든 문단의 자동 입력이 완료되었습니다."))
 
+def get_lines_for_count(text, remove_headers=False):
+    lines = get_lines_from_text(text)
+    if remove_headers:
+        pattern = re.compile(r'^\s*챕터\s*\d+')
+        lines = [line for line in lines if not pattern.match(line)]
+    return lines
+
 def update_paragraph_count(event=None):
-    """실시간으로 문단 개수를 계산하여 라벨에 표시합니다."""
+    """실시간으로 문단/문장 개수를 계산하여 라벨에 표시합니다."""
     text = text_area.get("1.0", tk.END).strip()
     if not text:
         count_label.config(text="감지된 문단: 0개", fg="#666")
+        sentence_count_label.config(text="감지된 문장: 0개", fg="#666")
         return
     
-    paragraphs = split_paragraphs(text, remove_headers=remove_headers_var.get())
-    count = len(paragraphs)
-    count_label.config(text=f"감지된 문단: {count}개", fg="#1976D2")
+    remove_headers = remove_headers_var.get()
+    paragraphs = split_paragraphs(text, remove_headers=remove_headers)
+    lines = get_lines_for_count(text, remove_headers=remove_headers)
+    count_label.config(text=f"감지된 문단: {len(paragraphs)}개", fg="#1976D2")
+    sentence_count_label.config(text=f"감지된 문장: {len(lines)}개", fg="#1976D2")
 
 # GUI 설정
 root = tk.Tk()
@@ -159,10 +247,13 @@ option_frame.grid(row=1, column=0, sticky="ew", padx=20)
 count_label = tk.Label(option_frame, text="감지된 문단: 0개", font=("Malgun Gothic", 10, "bold"), fg="#666")
 count_label.pack(side="left", padx=5)
 
+sentence_count_label = tk.Label(option_frame, text="감지된 문장: 0개", font=("Malgun Gothic", 10, "bold"), fg="#666")
+sentence_count_label.pack(side="left", padx=5)
+
 remove_headers_var = tk.BooleanVar(value=True)  # 기본적으로 체크됨
 remove_headers_checkbox = tk.Checkbutton(
     option_frame, 
-    text="챕터 제목 삭제하기 ( 예: 챕터 1: ... )", 
+    text="챕터 제목 제외하기 ( 예: 챕터 1: ... )", 
     variable=remove_headers_var,
     font=("Malgun Gothic", 10),  # 폰트 크기 원복
     command=update_paragraph_count
@@ -188,17 +279,113 @@ footer_frame.grid(row=4, column=0, sticky="ew")
 status_label = tk.Label(footer_frame, text="대기 중", fg="blue", font=("Malgun Gothic", 10))
 status_label.pack()
 
+bottom_row = tk.Frame(footer_frame)
+bottom_row.pack(pady=10)
+
+left_frame = tk.Frame(bottom_row)
+left_frame.pack(side="left", padx=(0, 40))
+
 start_button = tk.Button(
-    footer_frame, 
-    text="자동 입력 시작", 
-    command=start_input, 
-    bg="#4CAF50", 
-    fg="white", 
-    font=("Malgun Gothic", 13, "bold"), 
-    padx=40, 
+    left_frame,
+    text="자동입력시작",
+    command=start_input,
+    bg="#4CAF50",
+    fg="white",
+    font=("Malgun Gothic", 13, "bold"),
+    padx=40,
     pady=15,
     cursor="hand2"
 )
-start_button.pack(pady=10)
+start_button.pack()
+
+right_frame = tk.Frame(bottom_row)
+right_frame.pack(side="right")
+
+paragraph_count_var = tk.StringVar(value="5")
+
+def on_paragraph_spin(delta):
+    try:
+        current = int(paragraph_count_var.get().strip())
+    except ValueError:
+        current = 5
+    current = max(1, min(999, current + delta))
+    paragraph_count_var.set(str(current))
+
+row1 = tk.Frame(right_frame)
+row1.pack(pady=(0, 8))
+tk.Label(row1, text="문단 갯수", font=("Malgun Gothic", 10)).pack(side="left", padx=(0, 5))
+paragraph_count_spin = tk.Spinbox(
+    row1,
+    textvariable=paragraph_count_var,
+    from_=1,
+    to=999,
+    width=5,
+    font=("Malgun Gothic", 11),
+    justify="center"
+)
+paragraph_count_spin.pack(side="left", padx=(0, 10))
+split_button = tk.Button(
+    row1,
+    text="문단 나누기",
+    command=do_split_paragraphs,
+    bg="#2196F3",
+    fg="white",
+    font=("Malgun Gothic", 11, "bold"),
+    padx=20,
+    pady=10,
+    cursor="hand2"
+)
+split_button.pack(side="left")
+def paragraph_wheel(e):
+    d = e.delta if hasattr(e, "delta") else (120 if e.num == 4 else -120)
+    on_paragraph_spin(1 if d > 0 else -1)
+    return "break"
+paragraph_count_spin.bind("<MouseWheel>", paragraph_wheel)
+paragraph_count_spin.bind("<Button-4>", lambda e: (on_paragraph_spin(1), "break")[-1])
+paragraph_count_spin.bind("<Button-5>", lambda e: (on_paragraph_spin(-1), "break")[-1])
+
+sentence_count_var = tk.StringVar(value="2")
+
+def on_sentence_spin(delta):
+    try:
+        current = int(sentence_count_var.get().strip())
+    except ValueError:
+        current = 2
+    current = max(1, min(999, current + delta))
+    sentence_count_var.set(str(current))
+
+row2 = tk.Frame(right_frame)
+row2.pack()
+tk.Label(row2, text="문장 갯수", font=("Malgun Gothic", 10)).pack(side="left", padx=(0, 5))
+sentence_count_spin = tk.Spinbox(
+    row2,
+    textvariable=sentence_count_var,
+    from_=1,
+    to=999,
+    width=5,
+    font=("Malgun Gothic", 11),
+    justify="center"
+)
+sentence_count_spin.pack(side="left", padx=(0, 10))
+def sentence_wheel(e):
+    d = e.delta if hasattr(e, "delta") else (120 if e.num == 4 else -120)
+    on_sentence_spin(1 if d > 0 else -1)
+    return "break"
+sentence_count_spin.bind("<MouseWheel>", sentence_wheel)
+sentence_count_spin.bind("<Button-4>", lambda e: (on_sentence_spin(1), "break")[-1])
+sentence_count_spin.bind("<Button-5>", lambda e: (on_sentence_spin(-1), "break")[-1])
+
+split_sentences_button = tk.Button(
+    row2,
+    text="문장갯수로 나누기",
+    command=do_split_by_sentences,
+    bg="#2196F3",
+    fg="white",
+    font=("Malgun Gothic", 11, "bold"),
+    padx=20,
+    pady=10,
+    cursor="hand2"
+)
+split_sentences_button.pack(side="left")
 
 root.mainloop()
