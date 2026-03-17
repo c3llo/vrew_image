@@ -113,8 +113,8 @@ def split_paragraphs(text, remove_headers=False):
     if remove_headers:
         # '챕터 [숫자]'로 시작하는 행을 행 단위로 먼저 제거합니다.
         lines = text.split('\n')
-        # 패턴: 시작부분(공백허용) + 챕터 + 공백(허용) + 숫자
-        pattern = re.compile(r'^\s*챕터\s*\d+')
+        # 패턴: 시작부분(공백허용) + 선택적 '#' + 챕터 + 공백(허용) + 숫자
+        pattern = re.compile(r'^\s*#?\s*챕터\s*\d+')
         
         filtered_lines = []
         for line in lines:
@@ -225,7 +225,8 @@ def run_automation(paragraphs):
 def get_lines_for_count(text, remove_headers=False):
     lines = get_lines_from_text(text)
     if remove_headers:
-        pattern = re.compile(r'^\s*챕터\s*\d+')
+        # 패턴: 시작부분(공백허용) + 선택적 '#' + 챕터 + 공백(허용) + 숫자
+        pattern = re.compile(r'^\s*#?\s*챕터\s*\d+')
         lines = [line for line in lines if not pattern.match(line)]
     return lines
 
