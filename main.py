@@ -1,9 +1,34 @@
+import json
 import re
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import threading
 import time
 from pywinauto import Application
+
+def try_extract_script_from_json(text):
+    text = text.strip()
+    if not text.startswith("{") or not text.strip().endswith("}"):
+        return False, text
+    normalized = re.sub(r'"\s*\n\s*"', '", "', text)
+    try:
+        data = json.loads(normalized)
+        if not isinstance(data, dict):
+            return False, text
+        def key_order(k):
+            nums = [int(m.group()) for m in re.finditer(r'\d+', k)]
+            return (nums, k) if nums else ([-1], k)
+        keys = sorted(data.keys(), key=key_order)
+        parts = []
+        for k in keys:
+            v = data[k]
+            if isinstance(v, str) and v.strip():
+                parts.append(v.strip())
+        if not parts:
+            return False, text
+        return True, "\n\n".join(parts)
+    except (json.JSONDecodeError, TypeError):
+        return False, text
 
 def get_lines_from_text(text):
     return [s.strip() for s in text.split("\n") if s.strip()]
@@ -268,9 +293,23 @@ info_label.grid(row=2, column=0, sticky="w", padx=20)
 text_area = scrolledtext.ScrolledText(root, font=("Malgun Gothic", 11), undo=True)
 text_area.grid(row=3, column=0, sticky="nsew", padx=20, pady=5)
 
-# 실시간 문단 카운트 바인딩
+def on_paste(event):
+    try:
+        raw = root.clipboard_get()
+    except tk.TclError:
+        return
+    ok, text = try_extract_script_from_json(raw)
+    if ok:
+        text_area.insert(tk.INSERT, text)
+        update_paragraph_count()
+    else:
+        text_area.insert(tk.INSERT, raw)
+        update_paragraph_count()
+    return "break"
+
+text_area.bind("<Control-v>", on_paste)
 text_area.bind("<KeyRelease>", update_paragraph_count)
-text_area.bind("<ButtonRelease>", update_paragraph_count) # 마우스 붙여넣기 대응
+text_area.bind("<ButtonRelease>", update_paragraph_count)
 
 # 하단 섹션
 footer_frame = tk.Frame(root, pady=15)
